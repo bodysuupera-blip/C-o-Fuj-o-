@@ -1,5 +1,5 @@
 
-name: CAO FUJAO V2.2 - APK CORRIGIDO
+name: CAO FUJAO V2.3 - GERAR APK
 
 on:
   workflow_dispatch:
@@ -14,11 +14,15 @@ jobs:
     name: Compilar CÃO FUJÃO
     runs-on: ubuntu-22.04
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
-      - name: Baixar repositório
+      - name: Baixar projeto
         uses: actions/checkout@v4
 
-      - name: Instalar Java 17
+      - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -29,7 +33,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Localizar e extrair projeto
+      - name: Preparar projeto
         shell: bash
         run: |
           set -e
@@ -39,71 +43,65 @@ jobs:
             ZIP=$(find . -maxdepth 2 -type f -iname '*.zip' | head -n 1)
 
             if [ -z "$ZIP" ]; then
-              echo "ERRO: Nenhum ZIP encontrado."
+              echo "ERRO: ZIP fonte não encontrado"
               exit 1
             fi
 
             mkdir -p fonte
-            unzip -q "$ZIP" -d fonte
+            unzip -oq "$ZIP" -d fonte
           fi
 
           PROJECT=$(find "$GITHUB_WORKSPACE" \
-            -name settings.gradle -o -name settings.gradle.kts \
-            | grep -v '/.git/' | head -n 1)
+            -type f \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -not -path '*/.git/*' | head -n 1)
 
           if [ -z "$PROJECT" ]; then
-            echo "ERRO: settings.gradle não encontrado."
+            echo "ERRO: Projeto Android não encontrado"
             exit 1
           fi
 
           DIR=$(dirname "$PROJECT")
 
-          echo "Projeto encontrado em: $DIR"
-          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
-
           test -d "$DIR/app"
           test -f "$DIR/app/src/main/AndroidManifest.xml"
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
+          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
+          echo "Projeto localizado: $DIR"
 
-      - name: Aceitar licenças Android
+      - name: Preparar Android SDK
         shell: bash
         run: |
-          set +e
-          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-            -name sdkmanager -type f | sort | tail -n 1)
+          set -e
 
-          if [ -z "$SDKMANAGER" ]; then
-            echo "SDK Manager não encontrado."
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -f "$SDKMANAGER" ]; then
+            echo "SDK Manager não encontrado"
             exit 1
           fi
 
-          yes | "$SDKMANAGER" --licenses
-          exit 0
-
-      - name: Instalar Android SDK 35
-        run: |
-          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-            -name sdkmanager -type f | sort | tail -n 1)
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses || true
+          set -o pipefail
 
           "$SDKMANAGER" --install \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Compilar CÃO FUJÃO
+      - name: Compilar aplicativo
         shell: bash
         run: |
           set -e
           cd "$PROJECT_DIR"
+
           gradle --version
           gradle --no-daemon clean assembleDebug
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: CAO-FUJAO-V2.2
+          name: CAO-FUJAO-V2.3-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
