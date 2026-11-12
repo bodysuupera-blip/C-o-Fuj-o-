@@ -1,5 +1,5 @@
 
-name: CAO FUJAO V2.0 - GERAR APK
+name: CAO FUJAO V2.1 - GERAR APK CORRIGIDO
 
 on:
   workflow_dispatch:
@@ -16,6 +16,10 @@ jobs:
     name: Compilar CÃO FUJÃO
     runs-on: ubuntu-22.04
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Baixar projeto
         uses: actions/checkout@v4
@@ -29,28 +33,61 @@ jobs:
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar SDK 35
+      - name: Aceitar licenças Android
+        shell: bash
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          set +o pipefail
 
-      - name: Verificar estrutura
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -f "$SDKMANAGER" ]; then
+            echo "SDK Manager não encontrado"
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses
+
+      - name: Instalar componentes Android
+        shell: bash
         run: |
-          test -f settings.gradle
-          test -f build.gradle
-          test -f app/build.gradle
+          set -e
+
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Verificar projeto
+        run: |
+          set -e
+
+          test -d app
+          test -f app/build.gradle -o -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
 
-      - name: Compilar APK
-        run: gradle --no-daemon clean assembleDebug
+          if [ ! -f settings.gradle ] && [ ! -f settings.gradle.kts ]; then
+            echo "settings.gradle não encontrado"
+            exit 1
+          fi
 
-      - name: Salvar APK
+      - name: Compilar aplicativo
+        shell: bash
+        run: |
+          set -e
+
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew --no-daemon clean assembleDebug
+          else
+            gradle --no-daemon clean assembleDebug
+          fi
+
+      - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: CAO-FUJAO-V2.0-APK
+          name: CAO-FUJAO-V2.1-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
