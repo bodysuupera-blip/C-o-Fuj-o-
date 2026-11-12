@@ -1,22 +1,20 @@
 
-name: CAO FUJAO V2.3 - GERAR APK
+name: CAO FUJAO V3.0 - GERAR APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: Compilar CÃO FUJÃO
+  gerar-apk:
+    name: Compilar Cão Fujão
     runs-on: ubuntu-22.04
-
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
       - name: Baixar projeto
@@ -28,81 +26,56 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Aceitar licenças Android
+        run: yes | sdkmanager --licenses || true
+
+      - name: Instalar componentes Android
+        run: |
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+
+      - name: Localizar e extrair projeto
+        run: |
+          set -e
+          ZIP=$(find . -maxdepth 3 -name "Cao_Fujao_V3_500_Fases.zip" | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERRO: Cao_Fujao_V3_500_Fases.zip não encontrado."
+            exit 1
+          fi
+
+          mkdir -p projeto
+          unzip -o "$ZIP" -d projeto
+
+          if [ ! -f projeto/settings.gradle ] && [ ! -f projeto/settings.gradle.kts ]; then
+            echo "ERRO: settings.gradle não encontrado."
+            find projeto -maxdepth 3 -type f
+            exit 1
+          fi
+
+          if [ ! -f projeto/app/build.gradle ] && [ ! -f projeto/app/build.gradle.kts ]; then
+            echo "ERRO: app/build.gradle não encontrado."
+            find projeto -maxdepth 4 -type f
+            exit 1
+          fi
+
       - name: Configurar Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Preparar projeto
-        shell: bash
-        run: |
-          set -e
-          cd "$GITHUB_WORKSPACE"
+      - name: Compilar APK
+        working-directory: projeto
+        run: gradle assembleDebug --stacktrace
 
-          if [ ! -f settings.gradle ] && [ ! -f settings.gradle.kts ]; then
-            ZIP=$(find . -maxdepth 2 -type f -iname '*.zip' | head -n 1)
-
-            if [ -z "$ZIP" ]; then
-              echo "ERRO: ZIP fonte não encontrado"
-              exit 1
-            fi
-
-            mkdir -p fonte
-            unzip -oq "$ZIP" -d fonte
-          fi
-
-          PROJECT=$(find "$GITHUB_WORKSPACE" \
-            -type f \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -not -path '*/.git/*' | head -n 1)
-
-          if [ -z "$PROJECT" ]; then
-            echo "ERRO: Projeto Android não encontrado"
-            exit 1
-          fi
-
-          DIR=$(dirname "$PROJECT")
-
-          test -d "$DIR/app"
-          test -f "$DIR/app/src/main/AndroidManifest.xml"
-
-          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
-          echo "Projeto localizado: $DIR"
-
-      - name: Preparar Android SDK
-        shell: bash
-        run: |
-          set -e
-
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-
-          if [ ! -f "$SDKMANAGER" ]; then
-            echo "SDK Manager não encontrado"
-            exit 1
-          fi
-
-          set +o pipefail
-          yes | "$SDKMANAGER" --licenses || true
-          set -o pipefail
-
-          "$SDKMANAGER" --install \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Compilar aplicativo
-        shell: bash
-        run: |
-          set -e
-          cd "$PROJECT_DIR"
-
-          gradle --version
-          gradle --no-daemon clean assembleDebug
-
-      - name: Publicar APK
+      - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: CAO-FUJAO-V2.3-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          name: CAO-FUJAO-V3-APK
+          path: projeto/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 30
           
